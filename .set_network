@@ -1,0 +1,53 @@
+#Netzwerkeinstellungen setzen
+# v1.0 raspi
+
+. $SYSCONFDIR/.sysconfig
+
+SUBIP=$(echo $IP | awk -v FS="." '{ print $1 "." $2 "." $3 }')
+#/etc/network/interfaces erstellen
+[ "$USEDHCP" == "1" ] && TYP="dhcp" \
+			|| TYP="static"
+[ "$USEWLAN" == "1" ] && INTERFACE="wlan0" \
+			|| INTERFACE="eth0"
+cat > /etc/network/interfaces <<EOF
+# ACHTUNG!!! Nicht bearbeiten! Wird automatisch vom
+# sysconf_changes Skript generiert
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug $INTERFACE
+iface $INTERFACE inet $TYP
+EOF
+if [ "$USEDHCP" != "1" ]; then
+cat >> /etc/network/interfaces <<EOF
+        address $IP
+        netmask $NETMASK
+        network $SUBIP.0
+        broadcast $SUBIP.255
+        gateway $GATEWAY
+EOF
+fi
+if [ "$USEWLAN" == "1" ]; then
+cat >> /etc/network/interfaces <<EOF
+        wpa-ap-scan 1
+        wpa-ssid "$WLANSSID"
+        wpa-psk "$WPAKEY"
+EOF
+fi
+
+#/etc/hostname erstellen
+echo $HOSTNAME > /etc/hostname
+
+#/etc/samba/smb.conf aendern
+sed -e 's/\(workgroup =\).*/\1 '$WORKGROUP'/' /etc/samba/smb.conf
+
+#/etc/mailname erstellen
+echo $HOSTNAME > /etc/mailname
+
+#/etc/hosts aendern
+echo -e "127.0.1.1\t\t$HOSTNAME" > /etc/hosts
+echo -e "$SERVERIP\t\t$SERVERHOSTNAME" >> /etc/hosts
+
+/etc/init.d/hostname.sh
+

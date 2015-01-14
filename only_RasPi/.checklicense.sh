@@ -1,0 +1,1 @@
+../.checklicense.sh

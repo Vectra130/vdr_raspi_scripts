@@ -1,0 +1,6 @@
+# v1.0 raspi
+
+#fbi -T 2 -noverbose $IMAGEDIR/screen_blank.png
+killall -9 -q omxplayer
+killall -9 -q omxplayer.bin
+#killall -9 -q fbi

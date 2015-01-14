@@ -1,0 +1,254 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          vectra130.init
+# Required-Start:
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 1 6
+# Short-Description: Vectra130 Init and Shutdown Script
+# Description:
+### END INIT INFO
+# v1.1 raspi
+
+# PATH should only include /usr/* if it runs after the mountnfs.sh script
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DESC="Vectra130 Init and Shutdown Script"
+NAME=vectra130.init
+PIDFILE=/var/run/$NAME.pid
+SCRIPTNAME=/etc/init.d/aa-$NAME
+VERBOSE="yes"
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.2-14) to ensure that this file is present
+# and status_of_proc is working.
+. /lib/lsb/init-functions
+
+#pathvars setzen
+. /etc/vectra130/configs/sysconfig/.pathvars
+if [ -e $SYSCONFDIR/.sysconfig ]; then
+        . $SYSCONFDIR/.sysconfig
+fi
+
+#
+# Function that starts the daemon/service
+#
+do_start()
+{
+
+#boot und tmp Partition mounten
+mount -o ro /dev/mmcblk0p1 /boot
+rm -r /tmp
+mkdir /tmp
+mount -t tmpfs -o size=200M tmpfs /tmp
+
+#swap aktivieren
+swapon /etc/vectra130/data/swapfile
+
+#Reset-Button (GPIO 31) einrichten und pruefen
+echo "31" > /sys/class/gpio/export
+echo "in" > /sys/class/gpio/gpio31/direction
+if [ "$(cat /sys/class/gpio/gpio31/value)" == "1" ]; then
+	logger -t RESET "Reset Button betaetigt. Firststart-Sequenz wird eingeleitet"
+	sed -i -e 's/FIRSTSTART:0:/FIRSTSTART:1:/' $SYSCONFDIR/.config
+fi
+
+#TV_on auf GPIO 3 einrichten und auf 1 setzen
+echo "3" > /sys/class/gpio/export
+echo "out" > /sys/class/gpio/gpio3/direction
+echo "1" > /sys/class/gpio/gpio3/value
+
+#FirstBoot Check
+if [ ! -z "$(cat $SYSCONFDIR/.config | grep "FIRSTSTART:1")" ]; then
+	#werte auf 1 setzen
+	for config in USEDHCP SPLASHNR USEKODI AVRRELAIS; do
+		sed -i -e 's/:\('$config'\):.*:\([A,B,L]\):/:\1:1:\2:/' $SYSCONFDIR/.config
+	done
+	#werte auf 0 setzen
+        for config in EXTAUDIO; do
+                sed -i -e 's/:\('$config'\):.*:\([A,B,L]\):/:\1:0:\2:/' $SYSCONFDIR/.config
+        done
+	#werte loeschen
+        for config in IP GATEWAY NETMASK AVRIP AVRPORT SERVERIP SERVERHOSTNAME SERVERMAC NASIP1 NASIP2 NASPATH2 NASIP3 NASPATH3 NASIP4 NASPATH4 NAMESERVER; do
+                sed -i -e 's/:\('$config'\):.*:\([A,B,L]\):/:\1::\2:/' $SYSCONFDIR/.config
+        done
+	#spezielle werte setzen
+        sed -i -e 's/\(HOSTNAME\):.*:A:/\1:raspberry:A:/' -e 's/\(SPLASH\):.*:L:/\1:Video:L:/' -e 's/\(hdmigroup\):.*:L:/\1:Auto:L:/' -e 's/\(CONSOLE\):.*:L:/\1:10:L:/' -e 's/\(WORKGROUP\):.*:A:/\1:WORKGROUP:A:/' -e 's/\(AVRPORT\):.*:A:/\1:2701:A:/' -e 's/\(NASPATH1\):.*:A:/\1:video00:A:/' $SYSCONFDIR/.config
+
+	#root Passwort auf raspi setzen
+	echo "root:raspi" | chpasswd
+
+fi
+
+#Seriennummer ermitteln
+SERIALNR=$(cat /proc/cpuinfo | grep Serial | awk -F: '{ print $2 }' | sed -e 's/ //g')
+sed -i -e 's/\(-Seriennummer:\).*/\1 '"$SERIALNR"'/' $SYSCONFDIR/.config
+
+#System-Version ermitteln
+VERSION=$(cat /etc/vectra130/VERSION)
+sed -i -e 's/\(-Aktuelle Version:\).*/\1 '"$VERSION"'/' $SYSCONFDIR/.config
+
+#Sysconfig erstellen
+#####
+cat > $SYSCONFDIR/.sysconfig << EOF
+# Konfigurationsdatei fur automatisch generierte Variablen
+# !!!!!!!!!! NICHT BEARBEITEN !!!!!!!!!!
+
+
+#andere configs mit integrieren
+. $SYSCONFDIR/.pathvars
+. $VDRCONFDIR/.plugin_start.config
+
+	SYSTEMTYP="CLIENT"
+	CLIENTTYP="RasPi"
+        KEYB_TTY="/dev/tty10"
+        GEOMETRY="0 0 0 0 0"
+        DEBUGMODE="NO"
+        USEWLAN="0"
+        USEVDR="1"
+        SVDRP_PORT=6419
+	SERVERIP="$SERVERIP"
+	SERVERHOSTNAME="$SERVERHOSTNAME"
+	SERVERMAC="$SERVERMAC"
+	SERVERWAKEUP="AVR"
+	AVRIP="$AVRIP"
+	AVRPORT="$AVRPORT"
+	AVRRELAIS="$AVRRELAIS"
+	AVRHOSTNAME="$AVRHOSTNAME"
+	MACADRESS="Netzwerk nicht konfiguriert"
+	SERIALNR="$SERIALNR"
+	VERSION="$VERSION"
+	VDRVERS="2.1.6"
+
+. $SYSCONFDIR/.nice.config
+
+#Aus config uebernommene Variablen
+EOF
+#####
+
+$SCRIPTDIR/.create_sysconfig.sh
+. $SYSCONFDIR/.sysconfig
+
+#HDMI Mode setzen
+if [[ "$hdmigroup" != "Auto" && "$hdmigroup" != "HDMI_aus" ]]; then
+	case "$hdmigroup" in
+          1)
+        	tvservice -e "CEA $hdmimode"
+                ;;
+          2)
+                tvservice -e "DMT $hdmimode"
+                ;;
+        esac
+fi
+
+#Konsolenbildschirmschoner abschalten
+setterm -blank 0 -blink off -powerdown 0 -cursor off -store > $KEYB_TTY
+
+#Bildschirm Geometrie ermitteln und sichern
+GEOMETRY=$(fbset --show | grep geometry | cut -d' ' -f 6-)
+
+#Log festlegen
+#Konsole wechseln und bereinigen
+if [[ "$(cat /boot/cmdline.txt | sed 's/.*console=\(tty[0-9]*\) .*/\1/g')" != "tty1" || "FIRSTSTART" == "1" ]]; then
+        KEYB_TTY="/dev/tty2"
+        sed -i -e 's/DEBUGMODE=.*/DEBUGMODE=\"NO\"/' \
+               -e 's/KEYB_TTY=.*/KEYB_TTY=\"\/dev\/'$(echo $KEYB_TTY | awk -F "/" '{ print $3 }')'\"/' \
+               -e 's/GEOMETRY=.*/GEOMETRY=\"'"$GEOMETRY"'\"/' \
+               $SYSCONFDIR/.sysconfig
+        chvt $(echo $KEYB_TTY | sed -e 's/\/dev\/tty//')
+        echo -e '\033[?17;0;0c' > $KEYB_TTY
+        echo -e '\033[?25l' > $KEYB_TTY
+        tput -Tlinux clear > $KEYB_TTY
+
+        #Bootsplash starten
+        if [ "$SPLASH" == "Video" ]; then
+                #Videogroesse festlegen
+                V=$(echo $GEOMETRY | awk '{ print $1 }')
+                H=$(echo $GEOMETRY | awk '{ print $2 }')
+                x1=$[V/3]
+                y1=$[H/3]
+                x2=$[V/3*2]
+                y2=$[H/3*2]
+
+#                omxplayer --win "$x1 $y1 $x2 $y2" $VIDEODIR/Boot_Video"$SPLASHNR".avi &
+                omxplayer $VECTRADIR/sysvideos/Boot_Video"$SPLASHNR".avi &
+        fi
+        if [ "$SPLASH" == "Grafik" ]; then
+                fbi -a -T 2 --noverbose $VECTRADIR/sysimages/Boot_Splash"$SPLASHNR".jpg
+        fi
+else
+        KEYB_TTY="/dev/tty1"
+        sed -i -e 's/DEBUGMODE=.*/DEBUGMODE=\"YES\"/' \
+               -e 's/GEOMETRY=.*/GEOMETRY=\"'"$GEOMETRY"'\"/' \
+               -e 's/KEYB_TTY=.*/KEYB_TTY=\"\/dev\/'$(echo $KEYB_TTY | awk -F "/" '{ print $3 }')'\"/' $SYSCONFDIR/.sysconfig
+fi
+
+#Netzwerkart pruefen
+#if [ "$FIRSTSTART" != "1" ]; then
+        if ifconfig wlan0 &> /dev/null; then
+                sed -i -e 's/USEWLAN.*/USEWLAN=\"1\"/' $SYSCONFDIR/.sysconfig
+        else
+                sed -i -e 's/USEWLAN.*/USEWLAN=\"0\"/' $SYSCONFDIR/.sysconfig
+        fi
+#fi
+. $SCRIPTDIR/.set_network
+
+#alte Updatedateien entfernen
+[ $(ls /etc/vectra130/update/ | wc -l) != "0" ] && rm -r /etc/vectra130/update/*
+
+if [ -e /tmp/.reboot ]; then
+        rm /tmp/.reboot
+        echo >> $MSG
+        echo "Warte 10 Sekunden und starte dann neu ..." >> $MSG
+        . $SCRIPTDIR/.displaymessage
+        sleep 10
+        reboot force
+        sleep 10
+        exit 1
+fi
+
+}
+
+#
+# Function that stops the daemon/service
+#
+do_stop()
+{
+
+#Shutdown Grafik setzen
+killall -9 -q .showscreenimage.sh
+$SCRIPTDIR/.showscreenimage.sh shutdown &
+
+#Mediacenter in Standby setzen
+/etc/vectra130/scripts/.stopallmultimedia
+
+}
+
+#
+# Function that sends a SIGHUP to the daemon/service
+#
+
+case "$1" in
+  start)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+	do_start
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  stop)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
+#	do_stop
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  *)
+	echo "Usage: $SCRIPTNAME {start|stop}"
+	exit 3
+	;;
+esac
+
+:
+

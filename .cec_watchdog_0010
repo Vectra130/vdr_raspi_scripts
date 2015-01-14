@@ -1,0 +1,21 @@
+# v1.0 raspi
+#watchdog prueft ob cec bildschirm verbunden ist
+cecStatus=$(echo QUIT | cec-client -s | grep 'TV.*power status changed.*standby' | wc -l)
+if [[ "$SCREENOFF" == "CEC" && "$cecStatus" == "1" ]]; then
+	if [ ! -e /tmp/.cec_connect.time ]; then
+		logger -t WATCHDOG "cec ist disconnected, gehe in 5 Minuten in suspend..."
+		date +%s > /tmp/.cec_connect.time
+	else
+		LAST=$(cat /tmp/.cec_connect.time)
+		NOW=$(date +%s)
+		DIFF=$[ NOW - LAST ]
+		if [ $DIFF -ge 290 ]; then
+			rm /tmp/.cec_connect.time
+			logger -t WATCHDOG "CEC Anschluss seit 5 Minuten disconnected, starte Suspend..."
+			$SCRIPTDIR/.suspend.sh
+		fi
+	fi
+else
+	[ -e /tmp/.cec_connect.time ] && logger -t WATCHDOG "CEC Anschluss wieder connected"
+	[ -e /tmp/.cec_connect.time ] && rm /tmp/.cec_connect.time
+fi

@@ -1,0 +1,19 @@
+# v1.0 raspi
+
+		killall -9 -q .showscreenimage.sh
+                [[ "$DEBUGMODE" != "YES" && "$FIRSTSTART" != "1" ]] && $SCRIPTDIR/.showscreenimage.sh wlan &
+		logger -t WLAN "Warte auf WLAN Verbindung"
+		for((i=1; i<31; i++)); do		
+			if route | grep 192; then
+	       	 	        logger -t WLAN "WLAN hergestellt ..."
+				[ $(pidof -xs .watchdog.sh) ] || touch /tmp/.wlan_watchdog
+				sleep 1
+				[ "$FIRSTSTART" != "1" ] && $SCRIPTDIR/.showscreenimage.sh blank &
+				[ "$DEBUGMODE" != "YES" ] && tput -Tlinux clear > $KEYB_TTY
+				break
+			fi
+			[ "$i" == 30 ] && logger -t WLAN "WLAN Verbindung konnte nicht hergestellt werden! Versuche einen Neustart ..." > $KEYB_TTY
+			sleep 2
+			[[ "$i" == 30 && "$FIRSTSTART" != "1" ]] && init reboot
+		done
+ 

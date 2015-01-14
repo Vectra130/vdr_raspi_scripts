@@ -1,0 +1,26 @@
+# v1.1 raspi
+
+if [[ "$USEWLAN" == "1" && -e /tmp/.wlan_watchdog ]]; then
+	STATUS=$(ifplugstatus | grep "wlan0: link beat detected")
+	if [ ! "$STATUS" ]; then
+		. $SCRIPTDIR/.stopallmultimedia
+		echo "WLAN Adapter Fehler!!! Versuche einen Neustart ..."
+		sleep 10
+		reboot force
+		exit 0
+	fi
+	OFFLINE=$(ping -c3 $GATEWAY | grep errors)
+	if [ "$OFFLINE" ]; then
+		if [ "$FAIL" == 6 ]; then
+			. $SCRIPTDIR/.stopallmultimedia
+			echo "Wlan Verbindung konnte nicht wiederhergestellt werden!!! Versuche einen Neustart ..."
+			sleep 10
+			reboot force
+			exit 0
+		else
+			FAIL=$[FAIL+1]
+		fi
+	else
+		FAIL=0
+	fi
+fi
