@@ -1,4 +1,4 @@
-# v1.25 all clients
+# v1.26 all clients
 if ! pidof -xs vdr > /dev/null; then	
 	. $SYSCONFDIR/.sysconfig
         logger -t VDR "Starte VDR (Vorbereitung)..."
@@ -70,7 +70,7 @@ PLUGINS=""
 [[ "$VDRPLUGINsuspendoutput" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-suspendoutput.so.$VDRVERS ]] 		&& PLUGINS+="-P 'suspendoutput' "
 [[ "$VDRPLUGINskinflat" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinflat.so.$VDRVERS ]] 			&& PLUGINS+="-P 'skinflat --logopath=$CHANLOGODIR' "
 [[ "$VDRPLUGINskinflatplus" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinflatplus.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skinflatplus --logopath=$CHANLOGODIR' "
-[[ "$VDRPLUGINskinenigmang" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinenigmang.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skinenigmang --logodir=$CHANLOGODIR --epgimages=$EPGIMAGEDIR' "
+[[ "$VDRPLUGINskinenigmang" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinenigmang.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skinenigmang --logodir=${CHANLOGODIR}_xpm --epgimages=$EPGIMAGEDIR' "
 [[ "$VDRPLUGINskinnopacity" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinnopacity.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skinnopacity --logopath=$CHANLOGODIR --iconpath=/root/.vdr/plugins/skinnopacity/icons --epgimages=$EPGIMAGEDIR' "
 [[ "$VDRPLUGINskinpearlhd" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skinpearlhd.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skinpearlhd --epgimages=$EPGIMAGEDIR' "
 [[ "$VDRPLUGINskindesigner" == "1" && -e /usr/lib/vdr/plugins-$VDRVERS/libvdr-skindesigner.so.$VDRVERS ]] 		&& PLUGINS+="-P 'skindesigner --epgimages=$EPGIMAGEDIR' "
